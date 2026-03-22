@@ -1,5 +1,5 @@
 // C++ Project building system
-// Requires C++17
+// Requires C++14
 
 // Pavlygin Danil 2026
 
