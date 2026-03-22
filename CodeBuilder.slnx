@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="CodeBuilder.vcxproj" Id="9523dfc6-bd43-4cbd-bd8a-efbac978c2d3" />
+</Solution>
