@@ -2,3 +2,6 @@
 /CodeBuilder
 /x64
 /example
+*.exe
+*.old
+/cb_cache

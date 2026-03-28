@@ -6,7 +6,7 @@ static const cb::path libs = cb::get_env_var("libs");
 static const fs::path libs = "~/libs/";
 #endif // _WIN32
 
-int main(int argc, char** argv) {
+void build_utilib_tests() {
     cb::path utilib = libs / "utilib" / "utilib" / "tests";
     cb::path boost  = libs / "boost";
     
@@ -16,4 +16,12 @@ int main(int argc, char** argv) {
     cmd.append_source(utilib.string());
 
     cmd.run();
+}
+
+int main(int argc, char** argv) {
+    cb::parser parser{ argc, argv };
+    if (cb::try_rebuild_itself(parser))
+        return 0;
+
+    printf("Hello World!\n");
 }

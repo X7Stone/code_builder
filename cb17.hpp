@@ -51,11 +51,7 @@ struct path_rep_cond : std::is_constructible<std::filesystem::path, T> {};
 CONCEPT(path_rep, path_rep_impl, path_rep_cond, "The type must be path")
 
 // SHA256 implementation
-
 // Copyright(c) 2010 Ilya O.Levin, http://www.literatecode.com
-
-#define SWAP_BYTES
-#define USE_STD_MEMCPY
 
 extern "C"
 {
@@ -262,7 +258,7 @@ bool save_file_hash(const path& file);                      // Calculates and sa
 std::optional<std::string> get_file_hash_cache(const path& file);
 
 // Tries to rebuild itself if old cb.cpp != new cb.cpp
-// Returns true if rebuilded and completed the new version, false otherwise
+// Returns true if rebuilded and executed the new version, false otherwise
 bool try_rebuild_itself(parser args, const path& file = "./cb.cpp");
 
 // [3] Getter for environmental variables
@@ -362,7 +358,8 @@ bool make_dir(const path& dir) {
         return true;
 
     std::error_code ec;
-    if (!fs::create_directories(dir, ec)) {
+    fs::create_directories(dir, ec); // BUG: always returns false
+    if (ec) {
         printf("[ERROR] Failed to create %s %s\n", dir.string().c_str(), ec.message().c_str());
         return false;
     }
@@ -424,8 +421,8 @@ path get_cache_dir() {
 }
 
 bool save_file_hash(const path& file) {
-    const path cache_path{ get_cache_dir() / path_to_filename(file) };
-    if (auto hash = get_file_hash(cache_path)) {
+    if (auto hash = get_file_hash(file)) {
+        const path cache_path{ get_cache_dir() / path_to_filename(file) };
         std::ofstream os{ cache_path, std::ios::binary };
         if (!os) {
             printf("[ERROR] Can't open or create: %s\n", cache_path.string().c_str());
@@ -433,6 +430,7 @@ bool save_file_hash(const path& file) {
         }
         os.write(hash->data(), hash->size());
         os.close();
+        return true;
     }
     return false;
 }
@@ -450,8 +448,6 @@ std::optional<std::string> get_file_hash_cache(const path& file) {
         is.read((char*)ret.data(), ret.size());
         return ret;
     }
-    else
-        save_file_hash(file);
     return std::nullopt;
 }
 
@@ -487,15 +483,27 @@ std::optional<std::string> get_file_hash(const path& file) {
 bool try_rebuild_itself(parser args, const path& file) {
     if (!make_dir(get_cache_dir()))
         return false;
-    if (get_file_hash(file) == get_file_hash_cache(file))
+    
+    auto my_hash  = get_file_hash(file);
+    auto old_hash = get_file_hash_cache(file);
+    if (!old_hash) {
+        save_file_hash(file);
         return false;
+    }
+    else if (my_hash && *my_hash == *old_hash)
+        return false;
+    
+    const fs::path exe_new{ args.get_exe_path() };
+    const fs::path exe_old{ exe_new.string() + ".old" };
 
-    const std::string exe_new{ file.string() };
-    const std::string exe_old{ exe_new + ".old" };
+    // Clear exe_old if exists from previous recompilations
+    std::error_code ec;
+    if (fs::exists(exe_old))
+        if (!fs::remove(exe_old, ec)) // Remove cb.exe.old
+             printf("[ERROR] Removing failed: %s\n", ec.message().c_str());
 
     // Rename cb.exe -> cb.exe.old
-    std::error_code ec;
-    printf("%s -> %s\n", exe_new.c_str(), exe_old.c_str());
+    printf("Recompiling: %s -> %s\n", exe_new.string().c_str(), exe_old.string().c_str());
     fs::rename(exe_new, exe_old, ec);
     if (ec) {
         printf("[ERROR] Renaming failed: %s\n", ec.message().c_str());
@@ -511,21 +519,22 @@ bool try_rebuild_itself(parser args, const path& file) {
 
     // Run new cb.exe if compilation successful
     if (fs::exists(exe_new)) {
+        // Successfully compiled -> save hash to cache dir
+        save_file_hash(file);
+
+        // Run script
         cmd.clear();
 #ifdef _WIN32
-        cmd.append(exe_new);
+        cmd.append(exe_new.string());
 #else // UNIX
         cmd.append("./" + exe_new);
 #endif // _WIN32
         cmd.run();
-
-        if (!fs::remove(exe_old, ec)) // Remove cb.exe.old
-             printf("[ERROR] Removing failed: %s\n", ec.message().c_str());
-        save_file_hash(file); // Save cb.cpp hash
         return true;
     }
     else {
-        // Rename cb.exe.old -> cb.exe and continue
+        // Rename cb.exe.old -> cb.exe and continue this script
+        printf("Compilation failed: %s -> %s\n", exe_old.string().c_str(), exe_new.string().c_str());
         fs::rename(exe_old, exe_new, ec);
         if (ec)
             printf("[ERROR] Renaming failed: %s\n", ec.message().c_str());
